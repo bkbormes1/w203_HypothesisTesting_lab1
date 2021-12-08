@@ -1,0 +1,134 @@
+---
+title: "Democrats or Republicans: Who has more difficulty voting?"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Long lines, inability to produce a government ID, and difficulty getting to polling booths are all reasons voting can be difficult on election day. For decades there have been discussions about the most just and easiest way to allow US citizens to vote. From volunteers who bus people to polling booths and a plethora of resources to assist with casting an absentee ballot, both Democrats and Republicans have assisted Americans in the voting process. 
+
+Which party needs more assistance? Are Democrats or Republicans having a more difficult time voting? Answering this question will give us a better understanding of party demographics and which voters require more assistance on election day. 
+
+With data from the American National Election Studies (ANES), a federally funded organization, we will analyze this question with statistical techniques to determine if Republicans or Democrats have more difficulty voting. ANES produces high quality voting data through surveys to inform explanations of election outcomes. In this experiment, we will be using ANES’s 2020 Time Series Study data to understand Democrats’ and Republicans’ difficulty voting. The variables or survey questions being analyzed are “How difficult was it for [you] to vote?” and “Party ID” and the statistical test we will use to determine if an individual’s party affiliation is significant when determining how difficult it is for one to vote is the Wilcoxon Rank Sum Hypothesis of Comparison Test. 
+
+## Determining the best variable to answer the question
+
+The two variables chosen from the data set were “Party ID: V201231x” and “How difficult was it for [you] to vote: V202119,” which we will refer to as “Voting Difficulty.” Party ID is a range from 1 (Democrat) to 7 (Republican) of how left or right leaning a survey respondent is, with 4 meaning an individual is independent. 
+
+According to John Richard Petrocik’s “Measuring Party Support: Learners are not Independents,” 40% of citizens are registered as independent but many of them tend to vote in line with a specific party. Using a measure of people’s behavior and beliefs instead of their voter registration is a much more accurate way to determine someone’s political affiliation. Additionally, for an indicator of voting difficulty we chose the variable that asked respondents on a scale from 1 (not difficult at all) to 5 (extremely difficult) how difficult it was to vote. This likert scale variable is a very clear ordinal measure of voting difficulty. Although there were other variables within the data that measured if weather, registration, identification card, or other problems occurred while voting, we determined that the variable clearly asking respondents about voting difficulty was the best measure.
+
+
+```{r, echo=FALSE, message=FALSE}
+#loading and cleaning the data
+library(tidyverse)
+library(haven)
+library(Hmisc)
+
+load_and_clean <- function() {
+  anes.stata <- data.frame(read_dta(file = "~/Documents/MIDS/w203/fall_203/lab_1-data/anes_timeseries_2020_stata_20210719.dta"))  
+  voters <- anes.stata[c("V201231x", "V202119")]
+  voters <- rename(voters, 'difficulty'='V202119', 'party'='V201231x') %>% drop_na()
+  
+  voters <- mutate(voters, Party_Preference =
+                  case_when(
+                    party == 1 ~ "Strong Democrat",
+                    party == 2 ~ "Not very strong Democrat",
+                    party == 3 ~ "Independent-Democrat",
+                    party == 4 ~ "Independent",
+                    party == 5 ~ "Independent-Republican",
+                    party == 6 ~ "Not very strong Republican",
+                    party == 7 ~ "Strong Republican",
+                    party == -8 ~ "Don't Know",
+                    party == -9 ~ "Refused" ) )
+  
+  
+  voters <- mutate(voters, Difficulty_Voting =
+                  case_when(
+                    difficulty == 1 ~ "Not difficult at all",
+                    difficulty == 2 ~ "A little difficult",
+                    difficulty == 3 ~ "Moderately difficult",
+                    difficulty == 4 ~ "Very difficult",
+                    difficulty == 5 ~ "Extremely difficult",
+                    difficulty == -1 | difficulty == -5 | difficulty == -6 | difficulty == -7 | difficulty == -9 ~ "ignore" ))
+  
+  return(voters)
+}
+
+df <- load_and_clean()
+```
+
+## Hypothosis
+
+$H_0: D_D = D_R$ There is not difference in the average difficulty Democrats $D_D$ or Republicans $R_R$ experience voting
+$H_a: D_D \neq D_R$ The average difficulty expereienced voting is different from Democrates $D_D$ as Republicans $R_D$
+
+## Assumptions
+
+- Voters are truthful when the respond as to which party they learn towards.
+- We will remove any respondants that refused to answer the to two questions used for this research and assume that those who refused are not sigifincant in numbers are similarity to skew our results.
+```{r, echo=FALSE, message=FALSE}
+df %>% count(df$Party_Preference)
+```
+- Only 31 respondents refused and no one responded that they did not know.
+
+
+- We will use the general question of 'How difficult was it to vote?' as a catch-all for the various reasons why a person found it more or less difficult to vote. This assumes that the general question captures all reasons and the respondent was able to weigh all potential blockers and distill that down to one response.
+- 1,879 people chose to ignore the question about how difficult it was to vote. We will assume these people did not have difficulty voting. It is not unreasonable to assume that those who did have difficulty voting are very likely to answer this question while those who had no trouble voting would pass it by.
+```{r, echo=FALSE, message=FALSE}
+df %>% count(df$Difficulty_Voting)
+```
+
+### Other Assumptions
+- All survey respondents will be included regardless of whether they voted in 2020. This is due to the fact that we need to capture voters who voted but were unable to due to blockers in place that prevented them from participating in the electoral process.
+
+```{r, echo=FALSE, message=FALSE}
+group_parties <- function(df) {
+  
+  df <- df %>% filter(party > 0 )
+  
+  df <- mutate(df, party =
+                  case_when(
+                    party == 1 ~ 1,
+                    party == 2 ~ 1,
+                    party == 3 ~ 1,
+                    party == 4 ~ -1,
+                    party == 5 ~ 2,
+                    party == 6 ~ 2,
+                    party == 7 ~ 2 ) )
+  
+  df <- mutate(df, difficulty =
+                  case_when(
+                    difficulty < 0 ~ -1,
+                    difficulty == 1 ~ 1,
+                    difficulty == 2 ~ 2,
+                    difficulty == 3 ~ 3,
+                    difficulty == 4 ~ 4, 
+                    difficulty == 5 ~ 5 )  )
+  
+  df <- mutate(df, Party_Preference =
+                  case_when(
+                    party == 1 ~ "Democrat",
+                    party == -1 ~ "Independent",
+                    party == 2 ~ "Republican") )
+  
+  df <- mutate(df, Difficulty_Voting =
+                  case_when(
+                    difficulty == 1 ~ "Not difficult at all",
+                    difficulty == 2 ~ "A little difficult",
+                    difficulty == 3 ~ "Moderately difficult",
+                    difficulty == 4 ~ "Very difficult",
+                    difficulty == 5 ~ "Extremely difficult",
+                    difficulty == -1 ~ "Not difficult at all"))
+  
+  return(df)
+}
+
+parties_grouped <- group_parties(df)
+
+summary(parties_grouped)
+```
+
